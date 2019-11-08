@@ -20,11 +20,7 @@ RUN apt-get update -qq \
                           ntp \
                           tree \
     && apt-get clean autoclean autoremove --yes \
-    && rm -rf /var/lib/{apt,dpkg,cache,log}/ \
-
-# Add Opscenter  user
-    && groupadd -r opscenter --gid=998 \
-    && useradd -m -d "$OPSCENTER_HOME" -r -g opscenter --uid=998 opscenter
+    && rm -rf /var/lib/{apt,dpkg,cache,log}
 
 FROM opscenter-base as base
 
@@ -49,14 +45,14 @@ MAINTAINER "DataStax, Inc <info@datastax.com>"
 # Copy any special files into the image
 COPY files /
 
-COPY --chown=opscenter:opscenter --from=base $OPSCENTER_HOME $OPSCENTER_HOME
+COPY --from=base $OPSCENTER_HOME $OPSCENTER_HOME
 
 # Create volume folders
 RUN (for dir in /var/lib/opscenter /config ; do \
-        mkdir -p $dir && chown -R opscenter:opscenter $dir && chmod 777 $dir ; \
+        mkdir -p $dir \
+        && chgrp -R 0 $dir \
+        && chmod 777 $dir ; \
     done )
-
-USER opscenter
 
 VOLUME [ "/var/lib/opscenter" ]
 

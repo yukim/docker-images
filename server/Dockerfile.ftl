@@ -7,20 +7,15 @@ FROM dse-base as dse-server-base
 ENV DSE_HOME /opt/dse
 ENV DSE_AGENT_HOME /opt/agent
 
-RUN set -x \
-# Add DSE user
-    && groupadd -r dse --gid=999 \
-    && useradd -m -d "$DSE_HOME" -r -g dse --uid=999 dse
-
 # Install missing packages
 RUN set -x \
+    && mkdir -p ${DSE_HOME} \
     && apt-get update -qq \
     && apt-get install -y python adduser lsb-base procps gzip zlib1g wget debianutils libaio1 sudo \
     && apt-get remove -y python3 \
     && apt-get autoremove --yes \
     && apt-get clean all \
-    && rm -rf /var/lib/{apt,dpkg,cache,log}/
-
+    && rm -rf /var/lib/{apt,dpkg,cache,log}
 
 FROM dse-server-base as base
 
@@ -40,7 +35,6 @@ RUN set -x \
 # Unpack tarball
     && tar -C "$DSE_HOME" --strip-components=1 -xzf /${TARBALL} \
     && rm /${TARBALL} \
-    && chown -R dse:dse ${DSE_HOME} \
 # Download Agent tarball if needed
     && if test ! -e /${DSE_AGENT_TARBALL}; then wget -nv --show-progress --progress=bar:force:noscroll -O /${DSE_AGENT_TARBALL} ${DSE_AGENT_DOWNLOAD_URL} ; fi \
     && mkdir -p "$DSE_AGENT_HOME" \
@@ -53,9 +47,9 @@ MAINTAINER "DataStax, Inc <info@datastax.com>"
 
 COPY files /
 
-COPY --chown=dse:dse --from=base $DSE_HOME $DSE_HOME
+COPY --from=base $DSE_HOME $DSE_HOME
 
-COPY --chown=dse:dse --from=base $DSE_AGENT_HOME $DSE_AGENT_HOME
+COPY --from=base $DSE_AGENT_HOME $DSE_AGENT_HOME
 
 # Create folders
 RUN (for dir in /var/lib/cassandra \
@@ -65,14 +59,19 @@ RUN (for dir in /var/lib/cassandra \
                 /var/log/cassandra \
                 /var/log/spark \
                 /config ; do \
-        mkdir -p $dir && chown -R dse:dse $dir && chmod 777 $dir ; \
+        mkdir -p $dir \
+        && chgrp -R 0 $dir \
+        && chmod 777 $dir ; \
     done )
+
+RUN chgrp -R 0 ${DSE_HOME} \
+    && chmod -R g=u ${DSE_HOME} \
+    && chgrp -R 0 ${DSE_AGENT_HOME} \
+    && chmod -R g=u ${DSE_AGENT_HOME}
 
 ENV PATH $DSE_HOME/bin:$PATH
 ENV HOME $DSE_HOME
 WORKDIR $HOME
-
-USER dse
 
 # Expose DSE folders
 VOLUME ["/var/lib/cassandra", "/var/lib/spark", "/var/lib/dsefs", "/var/log/cassandra", "/var/log/spark"]
@@ -100,4 +99,4 @@ EXPOSE 9103
 </#if>
 
 # Run DSE in foreground by default
-ENTRYPOINT [ "/entrypoint.sh", "dse", "cassandra", "-f" ]
+ENTRYPOINT [ "/entrypoint.sh", "dse", "cassandra", "-f", "-R" ]
